@@ -1,0 +1,32 @@
+name = "fort-card-last-mile"
+main = "src/worker.js"
+compatibility_date = "2026-06-01"
+
+# The lockbox worker decrypts and injects on YOUR OWN Cloudflare account, so the plaintext key
+# stays on your infrastructure. This repo is just this worker, so the "Deploy to Cloudflare"
+# button installs it directly from the repo root:
+#
+#   https://deploy.workers.cloudflare.com/?url=https://github.com/TheFortThatHolds/fort-card-lockbox
+#
+# The button auto-provisions the KV namespace below; the worker self-mints its own keys on
+# first boot, so the customer sets nothing.
+
+kv_namespaces = [
+  { binding = "LM", id = "PASTE_YOUR_KV_NAMESPACE_ID_HERE" }
+]
+
+# By hand instead of the button (from this folder):
+#   npx wrangler kv namespace create LM      # paste the id above
+#   npx wrangler deploy
+#
+# Then claim the connect credentials ONCE (first call wins — do it right after deploy):
+#   curl https://fort-card-last-mile.<you>.workers.dev/bootstrap
+# Paste the returned last_mile_url + last_mile_key into the control plane (LAST_MILE_URL /
+# LAST_MILE_KEY), then REMOVE the control plane's MASTER_KEY — it no longer needs (or should
+# hold) the root key.
+#
+# (optional) Back up the root key offline so a wiped KV can't strand your secrets:
+#   curl -H "Authorization: Bearer <LAST_MILE_KEY>" https://.../recovery
+#
+# Bring-your-own (advanced / migration): set MASTER_KEY and/or LAST_MILE_KEY as Worker secrets
+# and the worker uses those instead of minting. NEVER commit secret values.
