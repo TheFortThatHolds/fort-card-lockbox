@@ -16,8 +16,16 @@ call. The plaintext key lives only here, on your infrastructure, for the moment 
 
 Tap **Deploy to Cloudflare** above. It installs this worker onto your account and provisions its KV
 namespace automatically. The worker **mints its own keys on first boot** — you type nothing, and there
-is no secret to set. Then, in the Fort Card wallet, paste the worker's URL and approve; the wallet
-claims the connection link for you.
+is no secret to set.
+
+**Easiest connect (no URL copying):** in the wallet, tap **Set up your vault** — it shows a one-time
+**setup code** and your control-plane URL. Paste those two on Cloudflare's deploy screen (the
+`CLAIM_CODE` and `CONTROL_PLANE_URL` prompts). On first request the lockbox **phones home** with the
+code and reports its own URL; it lands as a pending vault in the wallet, and you tap **approve**. The
+code is one-time and expires in ~30 min, so deploy promptly.
+
+**Or paste the URL yourself:** leave those two blank, deploy, then paste the worker's URL into the
+wallet and approve — the wallet claims the connection link for you (`GET /bootstrap`, first-call-wins).
 
 By hand instead of the button:
 
@@ -29,7 +37,8 @@ npx wrangler deploy
 
 ## What it does
 
-- `GET  /bootstrap` — one-time, first-call-wins: returns the worker URL + relay token to connect it to the wallet. Seals itself after the first read.
+- **phone-home (automatic)** — when deployed with `CLAIM_CODE` + `CONTROL_PLANE_URL`, the worker reports its own URL + relay token to the control plane once, gated by the one-time code. Lands pending for your approval. Removes the URL copy-paste.
+- `GET  /bootstrap` — one-time, first-call-wins: returns the worker URL + relay token to connect it to the wallet. Seals itself after the first read. (The manual fallback.)
 - `POST /seal` — seal a value under your key → ciphertext (authorized by the bearer, or a short-TTL seal ticket so your browser can seal directly).
 - `POST /charge` — open a sealed secret, inject it into ONE outbound call, return only the response. The credential header is injected last; private/loopback/metadata targets are refused (SSRF fence).
 - `POST /rotate` — mint a fresh data key and re-seal every secret.

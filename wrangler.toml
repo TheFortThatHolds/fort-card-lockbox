@@ -15,6 +15,16 @@ kv_namespaces = [
   { binding = "LM", id = "PASTE_YOUR_KV_NAMESPACE_ID_HERE" }
 ]
 
+# ── EASY ONBOARDING (claim-code phone-home) ─────────────────────────────────────────────────────
+# Leave these blank to use the manual paste-URL flow (see /bootstrap below). To skip the URL paste,
+# the Fort Card wallet's "Set up your vault" shows you a one-time CLAIM_CODE and your CONTROL_PLANE_URL
+# — paste both here (the Deploy button prompts for [vars]). On first request the lockbox phones home
+# to the control plane with this code + its own URL; it lands PENDING and you tap approve in the
+# wallet. The code is one-time and expires in ~30 min, so deploy promptly after minting it.
+[vars]
+CLAIM_CODE = ""        # one-time code from the wallet's "Set up your vault" (leave blank for manual connect)
+CONTROL_PLANE_URL = "" # the Fort Card wallet/control-plane origin shown next to the claim code
+
 # By hand instead of the button (from this folder):
 #   npx wrangler kv namespace create LM      # paste the id above
 #   npx wrangler deploy

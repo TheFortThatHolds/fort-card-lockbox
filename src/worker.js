@@ -145,14 +145,45 @@ function ssrfBlocked(host) {
   return false;
 }
 
+// ── phone-home onboarding — if deployed with a CLAIM_CODE + CONTROL_PLANE_URL, the lockbox tells
+// the control plane its own URL + relay token ONCE, gated by that one-time code. The control plane
+// lands it PENDING for the owner to approve (their tap is the gate). This removes the URL
+// copy-paste: the customer typed a short code on the deploy screen instead of copying this worker's
+// URL back. Best-effort + idempotent — a KV flag (phonehome:done) ensures it fires at most once,
+// and it never blocks a real request. The paste-URL /bootstrap flow stays as the fallback. ──
+async function maybePhoneHome(env, selfOrigin) {
+  if (!env.CLAIM_CODE || !env.CONTROL_PLANE_URL || !env.LM) return;
+  if (await env.LM.get("phonehome:done")) return;
+  let cp;
+  try { cp = new URL(env.CONTROL_PLANE_URL); } catch { return; }
+  if (cp.protocol !== "https:") return;
+  const token = await lastMileToken(env); // our minted relay key — the value /bootstrap also hands out
+  await masterKeyB64(env);                 // ensure the KEK is minted too
+  try {
+    const r = await fetch(cp.origin + "/lockbox/phone-home", {
+      method: "POST",
+      headers: { "Content-Type": "application/json", "User-Agent": "fort-card-lockbox" },
+      body: JSON.stringify({ claim_code: env.CLAIM_CODE, url: selfOrigin, relay_token: token }),
+    });
+    // ok → landed pending; 403 → bad/expired/already-used code (retrying won't help). Either way, stop.
+    if (r.ok || r.status === 403) await env.LM.put("phonehome:done", new Date().toISOString());
+  } catch {
+    // network blip — leave the flag unset so the next request retries.
+  }
+}
+
 export default {
-  async fetch(request, env) {
+  async fetch(request, env, ctx) {
     // Either a KV binding to mint into, or both keys supplied as secrets. Otherwise we can't run.
     if (!env.LM && (!env.MASTER_KEY || !env.LAST_MILE_KEY)) {
       return json({ error: "server not configured — bind a KV namespace `LM` (keys self-mint) or set MASTER_KEY + LAST_MILE_KEY secrets" }, 500);
     }
     const url = new URL(request.url);
     const path = url.pathname.replace(/\/+$/, "") || "/";
+
+    // First-request onboarding: phone home once (fire-and-forget so it never blocks the response).
+    if (ctx && typeof ctx.waitUntil === "function") ctx.waitUntil(maybePhoneHome(env, url.origin));
+    else await maybePhoneHome(env, url.origin);
 
     if (path === "/") {
       return json({ name: "fort-card-last-mile", ok: true, role: "decrypt+inject on the owner's own infra" });
