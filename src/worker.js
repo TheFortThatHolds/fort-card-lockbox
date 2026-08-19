@@ -50,6 +50,23 @@ const b64e = (buf) => btoa(String.fromCharCode(...new Uint8Array(buf)));
 const b64d = (s) => Uint8Array.from(atob(s), (c) => c.charCodeAt(0));
 const json = (o, status = 200, extra = {}) =>
   new Response(JSON.stringify(o, null, 2), { status, headers: { "Content-Type": "application/json", ...extra } });
+
+// ── binary-safe upstream body read (build-item-52), mirrored from fort-card/worker/src/worker.js
+// so the split-mode /charge path stays behavior-identical to the direct path. .text() silently
+// corrupts a non-UTF8 response (audio/mpeg, image/*, etc.) BEFORE the caller ever sees it; json/text
+// content-types decode as before, anything else comes back base64-encoded, untouched. ──
+export async function readUpstreamBody(resp) {
+  const ct = (resp.headers.get("content-type") || "").toLowerCase();
+  if (ct.includes("json")) {
+    const text = await resp.text();
+    try { return JSON.parse(text); } catch { return text; }
+  }
+  if (ct.startsWith("text/") || ct === "") return await resp.text();
+  const bytes = new Uint8Array(await resp.arrayBuffer());
+  let bin = "";
+  for (let i = 0; i < bytes.length; i++) bin += String.fromCharCode(bytes[i]);
+  return { _binary: true, content_type: resp.headers.get("content-type") || null, base64: btoa(bin) };
+}
 // CORS so the tenant's own browser can seal a value here directly. Auth is the seal ticket (a
 // header), not a cookie, so Allow-Origin:* is safe — the ticket is the capability, not the origin.
 const CORS = { "Access-Control-Allow-Origin": "*", "Access-Control-Allow-Methods": "POST, OPTIONS", "Access-Control-Allow-Headers": "Content-Type, X-Seal-Ticket", "Access-Control-Max-Age": "86400" };
@@ -260,9 +277,7 @@ export default {
         headers: { ...(req.headers || {}), [header]: prefix + key }, // credential injected LAST
         body: req.body == null ? undefined : typeof req.body === "string" ? req.body : JSON.stringify(req.body),
       });
-      const text = await resp.text();
-      let out;
-      try { out = JSON.parse(text); } catch { out = text; }
+      const out = await readUpstreamBody(resp);
       return json({ status: resp.status, body: out });
     }
 
